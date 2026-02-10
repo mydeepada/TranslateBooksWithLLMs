@@ -61,6 +61,7 @@ const LOCAL_SETTINGS = [
     'lastTargetLanguage',
     'lastApiEndpoint',
     'lastOpenaiEndpoint',
+    'outputFilenamePattern',
     'ttsEnabled',
     'textCleanup',
     'refineTranslation',
@@ -150,6 +151,8 @@ export const SettingsManager = {
             // API endpoints
             { id: 'apiEndpoint', event: 'change' },
             { id: 'openaiEndpoint', event: 'change' },
+            // Output filename pattern
+            { id: 'outputFilenamePattern', event: 'change' },
             // API keys (save to .env)
             { id: 'geminiApiKey', event: 'change' },
             { id: 'openaiApiKey', event: 'change' },
@@ -299,6 +302,11 @@ export const SettingsManager = {
             DomHelpers.setValue('openaiEndpoint', prefs.lastOpenaiEndpoint);
         }
 
+        // Apply output filename pattern (naming convention)
+        if (prefs.outputFilenamePattern) {
+            DomHelpers.setValue('outputFilenamePattern', prefs.outputFilenamePattern);
+        }
+
         // Apply last provider AFTER endpoints are set
         // This triggers model loading with the correct endpoint
         if (prefs.lastProvider) {
@@ -412,6 +420,7 @@ export const SettingsManager = {
             lastTargetLanguage: this._getLanguageValue('targetLang', 'customTargetLang'),
             lastApiEndpoint: DomHelpers.getValue('apiEndpoint'),
             lastOpenaiEndpoint: DomHelpers.getValue('openaiEndpoint'),
+            outputFilenamePattern: DomHelpers.getValue('outputFilenamePattern'),
             ttsEnabled: ttsEnabledCheckbox ? ttsEnabledCheckbox.checked : false,
             textCleanup: textCleanupCheckbox ? textCleanupCheckbox.checked : false,
             refineTranslation: refineTranslationCheckbox ? refineTranslationCheckbox.checked : false,
@@ -500,6 +509,22 @@ export const SettingsManager = {
             } else if (provider === 'poe') {
                 const key = DomHelpers.getValue('poeApiKey');
                 if (key) envSettings['POE_API_KEY'] = key;
+            }
+
+            // Save endpoints to .env
+            const ollamaEndpoint = DomHelpers.getValue('apiEndpoint');
+            const openaiEndpoint = DomHelpers.getValue('openaiEndpoint');
+            if (ollamaEndpoint) {
+                envSettings['OLLAMA_API_ENDPOINT'] = ollamaEndpoint;
+            }
+            if (openaiEndpoint) {
+                envSettings['OPENAI_API_ENDPOINT'] = openaiEndpoint;
+            }
+
+            // Save output filename pattern (naming convention)
+            const filenamePattern = DomHelpers.getValue('outputFilenamePattern');
+            if (filenamePattern) {
+                envSettings['OUTPUT_FILENAME_PATTERN'] = filenamePattern;
             }
 
             // Also save provider and model as defaults

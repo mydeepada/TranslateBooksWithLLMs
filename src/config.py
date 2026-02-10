@@ -86,7 +86,12 @@ if _debug_mode:
     _config_logger.debug(f"📁 Loaded .env from: {_env_file.absolute()}")
 
 # Load from environment variables with defaults
-API_ENDPOINT = os.getenv('API_ENDPOINT', 'http://localhost:11434/api/generate')
+# Ollama endpoint configuration (provider-specific)
+OLLAMA_API_ENDPOINT = os.getenv('OLLAMA_API_ENDPOINT', 'http://localhost:11434/api/generate')
+# OpenAI-compatible endpoint configuration (for OpenAI, LM Studio, etc.)
+OPENAI_API_ENDPOINT = os.getenv('OPENAI_API_ENDPOINT', 'https://api.openai.com/v1/chat/completions')
+# Legacy API_ENDPOINT for backward compatibility (defaults to Ollama endpoint)
+API_ENDPOINT = os.getenv('API_ENDPOINT', OLLAMA_API_ENDPOINT)
 DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'qwen3:14b')
 PORT = int(os.getenv('PORT', '5000'))
 REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '900'))
@@ -232,6 +237,10 @@ PROMPT_PRESERVE_TECHNICAL_CONTENT = True
 # Server configuration
 HOST = os.getenv('HOST', '127.0.0.1')
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'translated_files')
+
+# Output filename pattern
+# Use {originalName}, {targetLang}, {sourceLang}, {model}, {ext} as placeholders
+OUTPUT_FILENAME_PATTERN = os.getenv('OUTPUT_FILENAME_PATTERN', '{originalName} ({targetLang}).{ext}')
 
 # Debug mode (reload after .env is loaded)
 DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'

@@ -353,9 +353,21 @@ export const FormManager = {
             // Pass empty string as default - setDefaultLanguage will keep existing "Other" selection
             setDefaultLanguage('sourceLang', 'customSourceLang', '')
 
-            // Set other configuration values
-            if (config.api_endpoint) {
+            // Set provider-specific API endpoints
+            // Ollama endpoint (for Ollama provider)
+            if (config.ollama_api_endpoint) {
+                DomHelpers.setValue('apiEndpoint', config.ollama_api_endpoint);
+            } else if (config.api_endpoint) {
+                // Fallback to legacy api_endpoint for backward compatibility
                 DomHelpers.setValue('apiEndpoint', config.api_endpoint);
+            }
+            // OpenAI endpoint (for OpenAI-compatible providers like OpenAI, LM Studio)
+            if (config.openai_api_endpoint) {
+                DomHelpers.setValue('openaiEndpoint', config.openai_api_endpoint);
+            }
+            // Output filename pattern (naming convention)
+            if (config.output_filename_pattern) {
+                DomHelpers.setValue('outputFilenamePattern', config.output_filename_pattern);
             }
             // Handle API keys - show indicator if configured in .env, otherwise keep placeholder
             ApiKeyUtils.setupField('geminiApiKey', config.gemini_api_key_configured, config.gemini_api_key);

@@ -26,6 +26,8 @@ def get_config_path():
 
 from src.config import (
     API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
+    OLLAMA_API_ENDPOINT,
+    OPENAI_API_ENDPOINT,
     DEFAULT_MODEL,
     REQUEST_TIMEOUT,
     OLLAMA_NUM_CTX,
@@ -44,7 +46,8 @@ from src.config import (
     DEEPSEEK_MODEL,
     POE_API_KEY,
     POE_MODEL,
-    MAX_TOKENS_PER_CHUNK
+    MAX_TOKENS_PER_CHUNK,
+    OUTPUT_FILENAME_PATTERN
 )
 
 # Setup logger for this module
@@ -139,6 +142,8 @@ def create_config_blueprint(server_session_id=None):
 
         config_response = {
             "api_endpoint": DEFAULT_OLLAMA_API_ENDPOINT,
+            "ollama_api_endpoint": OLLAMA_API_ENDPOINT,
+            "openai_api_endpoint": OPENAI_API_ENDPOINT,
             "default_model": DEFAULT_MODEL,
             "timeout": REQUEST_TIMEOUT,
             "context_window": OLLAMA_NUM_CTX,
@@ -156,7 +161,8 @@ def create_config_blueprint(server_session_id=None):
             "openrouter_api_key_configured": bool(OPENROUTER_API_KEY),
             "mistral_api_key_configured": bool(MISTRAL_API_KEY),
             "deepseek_api_key_configured": bool(DEEPSEEK_API_KEY),
-            "poe_api_key_configured": bool(POE_API_KEY)
+            "poe_api_key_configured": bool(POE_API_KEY),
+            "output_filename_pattern": OUTPUT_FILENAME_PATTERN
         }
 
         return jsonify(config_response)
@@ -771,7 +777,10 @@ def create_config_blueprint(server_session_id=None):
             'POE_MODEL',
             'DEFAULT_MODEL',
             'LLM_PROVIDER',
-            'API_ENDPOINT'
+            'API_ENDPOINT',
+            'OLLAMA_API_ENDPOINT',
+            'OPENAI_API_ENDPOINT',
+            'OUTPUT_FILENAME_PATTERN'
         }
 
         try:
@@ -821,7 +830,9 @@ def create_config_blueprint(server_session_id=None):
             "poe_api_key_configured": bool(POE_API_KEY),
             "default_model": DEFAULT_MODEL or "",
             "llm_provider": os.getenv('LLM_PROVIDER', 'ollama'),
-            "api_endpoint": DEFAULT_OLLAMA_API_ENDPOINT or ""
+            "api_endpoint": DEFAULT_OLLAMA_API_ENDPOINT or "",
+            "ollama_api_endpoint": OLLAMA_API_ENDPOINT or "",
+            "openai_api_endpoint": OPENAI_API_ENDPOINT or ""
         })
 
     return bp

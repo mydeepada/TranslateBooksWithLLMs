@@ -476,6 +476,20 @@ window.loadResumableJobs = ResumeManager.loadResumableJobs.bind(ResumeManager);
 // Provider Manager
 window.refreshModels = ProviderManager.refreshModels.bind(ProviderManager);
 
+// Settings Manager
+window.saveSettings = async () => {
+    const result = await SettingsManager.saveAllSettings(true);
+    if (result.success && result.savedToEnv && result.savedToEnv.length > 0) {
+        MessageLogger.showMessage(`✅ Settings saved: ${result.savedToEnv.join(', ')}`, 'success');
+        MessageLogger.addLog(`💾 Saved to .env: ${result.savedToEnv.join(', ')}`);
+    } else if (result.success) {
+        MessageLogger.showMessage('✅ Preferences saved', 'success');
+    } else {
+        MessageLogger.showMessage(`❌ Failed to save: ${result.error}`, 'error');
+    }
+    return result;
+};
+
 // Message Logger
 window.clearActivityLog = MessageLogger.clearLog.bind(MessageLogger);
 
