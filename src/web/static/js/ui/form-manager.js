@@ -343,15 +343,18 @@ export const FormManager = {
         try {
             const config = await ApiClient.getConfig();
 
-            // Detect browser language for target language (no default from .env)
-            const browserLanguage = this.detectBrowserLanguage();
+            // Set target language from server config if available, otherwise detect from browser
+            // This fixes GitHub issue #108: DEFAULT_TARGET_LANGUAGE was ignored
+            const targetLanguage = config.default_target_language && config.default_target_language.trim()
+                ? config.default_target_language
+                : this.detectBrowserLanguage();
+            setDefaultLanguage('targetLang', 'customTargetLang', targetLanguage);
 
-            // Set target language from browser detection
-            setDefaultLanguage('targetLang', 'customTargetLang', browserLanguage);
-
-            // Source language: preserve "Other" + custom value if already set (restored from file)
-            // Pass empty string as default - setDefaultLanguage will keep existing "Other" selection
-            setDefaultLanguage('sourceLang', 'customSourceLang', '')
+            // Set source language from server config if available
+            const sourceLanguage = config.default_source_language && config.default_source_language.trim()
+                ? config.default_source_language
+                : '';  // Empty = auto-detect from file
+            setDefaultLanguage('sourceLang', 'customSourceLang', sourceLanguage)
 
             // Set provider-specific API endpoints
             // Ollama endpoint (for Ollama provider)

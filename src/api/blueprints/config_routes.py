@@ -145,6 +145,8 @@ def create_config_blueprint(server_session_id=None):
             "ollama_api_endpoint": OLLAMA_API_ENDPOINT,
             "openai_api_endpoint": OPENAI_API_ENDPOINT,
             "default_model": DEFAULT_MODEL,
+            "default_source_language": DEFAULT_SOURCE_LANGUAGE,
+            "default_target_language": DEFAULT_TARGET_LANGUAGE,
             "timeout": REQUEST_TIMEOUT,
             "context_window": OLLAMA_NUM_CTX,
             "max_attempts": MAX_TRANSLATION_ATTEMPTS,
