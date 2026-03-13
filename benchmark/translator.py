@@ -384,15 +384,16 @@ async def get_available_openrouter_models(config: BenchmarkConfig, text_only: bo
         return [{"id": m, "name": m} for m in OpenRouterProvider.FALLBACK_MODELS]
 
 
-async def get_available_openai_models(config: BenchmarkConfig) -> list[dict]:
+async def _fetch_openai_models(config: BenchmarkConfig) -> list[dict]:
     """
-    Get list of available models from an OpenAI-compatible endpoint.
+    Fetch and filter models from an OpenAI-compatible endpoint.
 
     Args:
         config: Benchmark configuration
 
     Returns:
-        List of model dicts with id and name
+        List of model dicts with id, name, and owned_by fields.
+        Empty list if the endpoint is unreachable or returns no models.
     """
     import httpx
 
@@ -401,37 +402,42 @@ async def get_available_openai_models(config: BenchmarkConfig) -> list[dict]:
     if config.openai.api_key:
         headers["Authorization"] = f"Bearer {config.openai.api_key}"
 
-    fallback_models = [
-        {"id": "gpt-4o", "name": "gpt-4o"},
-        {"id": "gpt-4o-mini", "name": "gpt-4o-mini"},
-        {"id": "gpt-4-turbo", "name": "gpt-4-turbo"},
-        {"id": "gpt-4", "name": "gpt-4"},
-        {"id": "gpt-3.5-turbo", "name": "gpt-3.5-turbo"},
-    ]
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(f"{base_url}/models", headers=headers)
+        response.raise_for_status()
 
+        data = response.json()
+        models = []
+        for model in data.get("data", []):
+            model_id = model.get("id", "")
+            if not model_id:
+                continue
+            if "embedding" in model_id.lower() or "whisper" in model_id.lower():
+                continue
+            models.append({
+                "id": model_id,
+                "name": model_id,
+                "owned_by": model.get("owned_by", "unknown"),
+            })
+
+        models.sort(key=lambda item: item["name"].lower())
+        return models
+
+
+async def get_available_openai_models(config: BenchmarkConfig) -> list[dict]:
+    """
+    Get list of available models from an OpenAI-compatible endpoint.
+
+    Args:
+        config: Benchmark configuration
+
+    Returns:
+        List of model dicts with id and name. Empty list on failure.
+    """
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{base_url}/models", headers=headers)
-            response.raise_for_status()
-
-            data = response.json()
-            models = []
-            for model in data.get("data", []):
-                model_id = model.get("id", "")
-                if not model_id:
-                    continue
-                if "embedding" in model_id.lower() or "whisper" in model_id.lower():
-                    continue
-                models.append({
-                    "id": model_id,
-                    "name": model_id,
-                    "owned_by": model.get("owned_by", "unknown"),
-                })
-
-            models.sort(key=lambda item: item["name"].lower())
-            return models or fallback_models
+        return await _fetch_openai_models(config)
     except Exception:
-        return fallback_models
+        return []
 
 
 async def test_openai_translation_connection(config: BenchmarkConfig) -> tuple[bool, str]:
@@ -446,30 +452,13 @@ async def test_openai_translation_connection(config: BenchmarkConfig) -> tuple[b
     """
     import httpx
 
-    base_url = config.openai.endpoint.replace("/chat/completions", "").rstrip("/")
-    headers = {}
-    if config.openai.api_key:
-        headers["Authorization"] = f"Bearer {config.openai.api_key}"
-
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{base_url}/models", headers=headers)
-            response.raise_for_status()
-            data = response.json()
-
-        models = []
-        for model in data.get("data", []):
-            model_id = model.get("id", "")
-            if not model_id:
-                continue
-            if "embedding" in model_id.lower() or "whisper" in model_id.lower():
-                continue
-            models.append(model_id)
+        models = await _fetch_openai_models(config)
 
         if not models:
             return False, "No OpenAI-compatible models available"
 
-        model_names = models[:5]
+        model_names = [m["id"] for m in models[:5]]
         return True, (
             f"OpenAI-compatible endpoint connected ({config.openai.endpoint}). "
             f"Available models: {', '.join(model_names)}..."
