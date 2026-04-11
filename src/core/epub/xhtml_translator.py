@@ -363,9 +363,12 @@ async def attempt_placeholder_correction(
             return translated_text, False
 
         except Exception as e:
-            # Try to increase context if we have a manager and hit overflow/repetition errors
-            from ..llm import ContextOverflowError, RepetitionLoopError
+            # Re-raise RateLimitError to trigger auto-pause
+            from ..llm import ContextOverflowError, RepetitionLoopError, RateLimitError
+            if isinstance(e, RateLimitError):
+                raise
 
+            # Try to increase context if we have a manager and hit overflow/repetition errors
             if context_manager and isinstance(e, (ContextOverflowError, RepetitionLoopError)):
                 if context_manager.should_retry_with_larger_context(True, 0):
                     context_manager.increase_context()
@@ -1060,6 +1063,11 @@ def _replace_body(
             preview = new_html[:500] if len(new_html) > 500 else new_html
             log_callback("replace_body_html_preview", f"HTML preview: {preview}")
     except Exception as e:
+        # Re-raise RateLimitError to trigger auto-pause
+        from src.core.llm.exceptions import RateLimitError as _RLE
+        if isinstance(e, _RLE):
+            raise
+
         # Unexpected error - log full traceback for debugging
         import traceback
         xml_success = False
@@ -1269,6 +1277,10 @@ async def _refine_epub_chunks(
                 _log_error(log_callback, "epub_refinement_failed", f"Chunk {idx + 1}/{total_chunks}: refinement failed, using original")
 
         except Exception as e:
+            # Re-raise RateLimitError to trigger auto-pause
+            from src.core.llm.exceptions import RateLimitError as _RLE
+            if isinstance(e, _RLE):
+                raise
             # Fallback to original translation on error
             refined_chunks.append(translated_text)
             _log_error(log_callback, "epub_refinement_error", f"Chunk {idx + 1}/{total_chunks}: error during refinement: {e}")

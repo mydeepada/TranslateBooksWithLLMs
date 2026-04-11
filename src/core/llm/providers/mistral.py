@@ -18,7 +18,7 @@ import json
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, RateLimitError
 
 
 class MistralProvider(LLMProvider):
@@ -235,11 +235,17 @@ class MistralProvider(LLMProvider):
                     raise ValueError("Invalid Mistral API key")
 
                 if response.status_code == 429:
-                    # Rate limited - exponential backoff
-                    wait_time = 2 ** attempt
-                    print(f"⚠️ Mistral rate limited, waiting {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
+                    retry_after_header = response.headers.get("Retry-After")
+                    wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
+                    print(f"⚠️ Mistral rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise RateLimitError(
+                        f"Mistral rate limit exceeded after {MAX_TRANSLATION_ATTEMPTS} attempts",
+                        retry_after=wait_time,
+                        provider="mistral"
+                    )
 
                 response.raise_for_status()
                 result = response.json()

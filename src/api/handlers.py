@@ -13,6 +13,7 @@ from pathlib import Path
 from src.utils.unified_logger import setup_web_logger, LogType
 from src.utils.file_utils import get_unique_output_path, generate_tts_for_translation
 from src.core.llm import OpenRouterProvider
+from src.core.llm.exceptions import RateLimitError
 from src.core.adapters import translate_file
 from src.tts.tts_config import TTSConfig
 from .websocket import emit_update
@@ -438,6 +439,46 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 'filename': config.get('output_filename', 'unknown')
             }, namespace='/')
 
+    except RateLimitError as e:
+        # Auto-pause on rate limit — save checkpoint so user can resume later
+        retry_msg = f" Retry suggested after ~{e.retry_after}s." if e.retry_after else ""
+        provider_name = e.provider or config.get('llm_provider', 'API')
+        pause_msg = f"⏸️ Rate limited by {provider_name}.{retry_msg} Translation auto-paused — you can resume when ready."
+
+        _log_message_callback("rate_limit_auto_pause", pause_msg)
+
+        if state_manager.exists(translation_id):
+            state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
+            state_manager.set_translation_field(translation_id, 'interrupted', True)
+
+            # Mark checkpoint as interrupted so it appears in resumable jobs
+            checkpoint_manager.mark_interrupted(translation_id)
+
+            stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+            elapsed_time = time.time() - stats.get('start_time', time.time())
+            _update_translation_stats_callback({'elapsed_time': elapsed_time})
+
+            # Emit rate_limited status + checkpoint_created for UI
+            emit_update(socketio, translation_id, {
+                'status': 'rate_limited',
+                'log': pause_msg,
+                'result': state_manager.get_translation_field(translation_id, 'result') or f"Translation paused (rate limited)"
+            }, state_manager)
+
+            socketio.emit('checkpoint_created', {
+                'translation_id': translation_id,
+                'status': 'rate_limited',
+                'message': pause_msg
+            }, namespace='/')
+
+            # Trigger file list refresh for partial output
+            output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
+            if output_filepath and os.path.exists(output_filepath):
+                socketio.emit('file_list_changed', {
+                    'reason': 'rate_limited',
+                    'filename': config.get('output_filename', 'unknown')
+                }, namespace='/')
+
     except Exception as e:
         critical_error_msg = f"Critical error during translation task ({translation_id}): {str(e)}"
         _log_message_callback("critical_error_perform_task", critical_error_msg)
@@ -448,7 +489,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         if state_manager.exists(translation_id):
             state_manager.set_translation_field(translation_id, 'status', 'error')
             state_manager.set_translation_field(translation_id, 'error', critical_error_msg)
-            
+
             emit_update(socketio, translation_id, {
                 'error': critical_error_msg,
                 'status': 'error',

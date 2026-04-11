@@ -257,6 +257,10 @@ async def translate_epub_file(
                                f"📖 EPUB ready for LTR reading: text direction reset to left-to-right")
 
         except Exception as e_epub:
+            # Re-raise RateLimitError to trigger auto-pause
+            from src.core.llm.exceptions import RateLimitError
+            if isinstance(e_epub, RateLimitError):
+                raise
             err_msg = f"MAJOR ERROR processing EPUB '{input_filepath}': {e_epub}"
             if log_callback:
                 log_callback("epub_major_error", err_msg)
@@ -588,6 +592,10 @@ async def _translate_single_xhtml_file(
             log_callback("epub_xml_error", f"XML error in '{content_href}': {e}")
         return None, False, None
     except Exception as e:
+        # Re-raise RateLimitError to trigger auto-pause
+        from src.core.llm.exceptions import RateLimitError
+        if isinstance(e, RateLimitError):
+            raise
         if log_callback:
             log_callback("epub_file_error", f"Error processing '{content_href}': {e}")
         return None, False, None

@@ -24,3 +24,23 @@ class RepetitionLoopError(Exception):
     context window or encountered an issue.
     """
     pass
+
+
+class RateLimitError(Exception):
+    """
+    Raised when the API returns HTTP 429 (Too Many Requests) and all retry
+    attempts with backoff have been exhausted.
+
+    This signals the translation pipeline to auto-pause and save a checkpoint
+    so the user can resume later.
+
+    Attributes:
+        retry_after: Suggested wait time in seconds (from Retry-After header),
+                     or None if not provided by the API.
+        provider: Name of the LLM provider that was rate-limited.
+    """
+
+    def __init__(self, message: str, retry_after: int = None, provider: str = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.provider = provider

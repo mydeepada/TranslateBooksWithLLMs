@@ -11,7 +11,7 @@ import json
 import httpx
 
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, RateLimitError
 from ..utils.context_detection import ContextDetector
 
 from src.config import (
@@ -197,6 +197,24 @@ class OpenAICompatibleProvider(LLMProvider):
                                 error_message = str(error_json.get("error", e))
                     except:
                         error_message = f"{e} - {error_body}"
+
+                # Handle rate limiting (429)
+                if hasattr(e, 'response') and e.response is not None and e.response.status_code == 429:
+                    retry_after_header = e.response.headers.get("Retry-After")
+                    wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
+                    if self.log_callback:
+                        self.log_callback("llm_rate_limit",
+                            f"{YELLOW}⚠️ Rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...{RESET}")
+                    else:
+                        print(f"⚠️ Rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise RateLimitError(
+                        f"Rate limit exceeded after {MAX_TRANSLATION_ATTEMPTS} attempts",
+                        retry_after=wait_time,
+                        provider="openai-compatible"
+                    )
 
                 # Detect context overflow errors
                 context_overflow_keywords = ["context_length", "maximum context", "token limit",

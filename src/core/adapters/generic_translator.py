@@ -277,6 +277,11 @@ class GenericTranslator:
                             })
 
                 except Exception as e:
+                    # Re-raise RateLimitError to trigger auto-pause
+                    from src.core.llm.exceptions import RateLimitError
+                    if isinstance(e, RateLimitError):
+                        raise
+
                     if log_callback:
                         log_callback("unit_error",
                             f"Error translating unit {i+1}/{total_units}: {str(e)}")
@@ -339,6 +344,10 @@ class GenericTranslator:
                 return False
 
         except Exception as e:
+            # Re-raise RateLimitError to trigger auto-pause
+            from src.core.llm.exceptions import RateLimitError
+            if isinstance(e, RateLimitError):
+                raise
             if log_callback:
                 log_callback("translation_error", f"Translation error: {str(e)}")
             return False

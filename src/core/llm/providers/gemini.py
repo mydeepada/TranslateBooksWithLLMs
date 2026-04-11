@@ -16,7 +16,7 @@ import asyncio
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, RateLimitError
 
 
 class GeminiProvider(LLMProvider):
@@ -214,6 +214,21 @@ class GeminiProvider(LLMProvider):
                     if hasattr(e, 'response') and hasattr(e.response, 'text'):
                         error_body = e.response.text[:500]
                         error_message = f"{e} - {error_body}"
+
+                    # Handle rate limiting (429)
+                    if e.response.status_code == 429:
+                        retry_after_header = e.response.headers.get("Retry-After")
+                        wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
+                        print(f"⚠️ Gemini rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                        if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                            await asyncio.sleep(wait_time)
+                            continue
+                        # All retries exhausted - raise to trigger auto-pause
+                        raise RateLimitError(
+                            f"Gemini rate limit exceeded after {MAX_TRANSLATION_ATTEMPTS} attempts",
+                            retry_after=wait_time,
+                            provider="gemini"
+                        )
 
                     print(f"Gemini API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if error_body:

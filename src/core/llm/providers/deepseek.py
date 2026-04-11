@@ -18,7 +18,7 @@ import json
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, RateLimitError
 
 
 class DeepSeekProvider(LLMProvider):
@@ -221,10 +221,17 @@ class DeepSeekProvider(LLMProvider):
                     raise ValueError("Invalid DeepSeek API key")
 
                 if response.status_code == 429:
-                    wait_time = 2 ** attempt
-                    print(f"⚠️ DeepSeek rate limited, waiting {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
+                    retry_after_header = response.headers.get("Retry-After")
+                    wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
+                    print(f"⚠️ DeepSeek rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise RateLimitError(
+                        f"DeepSeek rate limit exceeded after {MAX_TRANSLATION_ATTEMPTS} attempts",
+                        retry_after=wait_time,
+                        provider="deepseek"
+                    )
 
                 response.raise_for_status()
                 result = response.json()

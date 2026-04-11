@@ -18,7 +18,7 @@ Example usage:
 """
 
 # Exceptions
-from .exceptions import ContextOverflowError, RepetitionLoopError
+from .exceptions import ContextOverflowError, RepetitionLoopError, RateLimitError
 
 # Base classes
 from .base import LLMProvider, LLMResponse
@@ -48,6 +48,7 @@ __all__ = [
     # Exceptions
     'ContextOverflowError',
     'RepetitionLoopError',
+    'RateLimitError',
 
     # Base
     'LLMProvider',

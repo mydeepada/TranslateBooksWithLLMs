@@ -13,7 +13,7 @@ from src.config import (
 from prompts.prompts import generate_translation_prompt, generate_subtitle_block_prompt, generate_refinement_prompt
 from prompts.examples import ensure_example_ready, has_example_for_pair, PLACEHOLDER_EXAMPLES
 from .llm_client import default_client, LLMClient, create_llm_client, LLMResponse
-from .llm import ContextOverflowError, RepetitionLoopError
+from .llm import ContextOverflowError, RepetitionLoopError, RateLimitError
 from .post_processor import clean_translated_text
 from .context_optimizer import (
     AdaptiveContextManager,
@@ -662,20 +662,46 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
                 continue
 
             # Use adaptive context translation
-            translated_chunk_text, _, llm_response = await _make_llm_request_with_adaptive_context(
-                main_content=main_content_to_translate,
-                context_before=context_before_text,
-                context_after=context_after_text,
-                previous_translation_context=last_successful_llm_context,
-                source_language=source_language,
-                target_language=target_language,
-                model=model_name,
-                llm_client=llm_client,
-                log_callback=log_callback,
-                has_placeholders=False,
-                prompt_options=prompt_options,
-                context_manager=context_manager
-            )
+            try:
+                translated_chunk_text, _, llm_response = await _make_llm_request_with_adaptive_context(
+                    main_content=main_content_to_translate,
+                    context_before=context_before_text,
+                    context_after=context_after_text,
+                    previous_translation_context=last_successful_llm_context,
+                    source_language=source_language,
+                    target_language=target_language,
+                    model=model_name,
+                    llm_client=llm_client,
+                    log_callback=log_callback,
+                    has_placeholders=False,
+                    prompt_options=prompt_options,
+                    context_manager=context_manager
+                )
+            except RateLimitError as e:
+                # Rate limit hit after retries — save checkpoint and re-raise for auto-pause
+                if log_callback:
+                    retry_msg = f" (retry after ~{e.retry_after}s)" if e.retry_after else ""
+                    log_callback("rate_limit_pause",
+                        f"⏸️ Rate limited by {e.provider or 'API'}{retry_msg}. "
+                        f"Auto-pausing translation at chunk {i+1}/{total_chunks}...")
+                if checkpoint_manager and translation_id:
+                    translation_context = {'last_llm_context': last_successful_llm_context}
+                    stats = progress_tracker.get_stats()
+                    checkpoint_manager.save_checkpoint(
+                        translation_id=translation_id,
+                        chunk_index=i - 1 if i > 0 else 0,
+                        original_text=main_content_to_translate,
+                        translated_text=None,
+                        chunk_data=chunk_data,
+                        translation_context=translation_context,
+                        total_chunks=stats.total_chunks,
+                        completed_chunks=stats.completed_chunks,
+                        failed_chunks=stats.failed_chunks
+                    )
+                # Add remaining chunks as original text for partial output
+                for remaining_chunk in chunks[i:]:
+                    full_translation_parts.append(remaining_chunk["main_content"])
+                raise  # Re-raise to handlers.py
 
             # Record success in context manager for adaptive learning
             if translated_chunk_text is not None and llm_response and context_manager:
@@ -1058,19 +1084,30 @@ async def refine_chunks(
                 context_after = original_chunks[i].get("context_after", "")
 
             # Make refinement request
-            refined_text, llm_response = await _make_refinement_request(
-                draft_translation=draft_text,
-                context_before=context_before,
-                context_after=context_after,
-                previous_refined_context=last_refined_context,
-                target_language=target_language,
-                model=model_name,
-                llm_client=llm_client,
-                log_callback=log_callback,
-                has_placeholders=False,
-                prompt_options=prompt_options,
-                context_manager=context_manager
-            )
+            try:
+                refined_text, llm_response = await _make_refinement_request(
+                    draft_translation=draft_text,
+                    context_before=context_before,
+                    context_after=context_after,
+                    previous_refined_context=last_refined_context,
+                    target_language=target_language,
+                    model=model_name,
+                    llm_client=llm_client,
+                    log_callback=log_callback,
+                    has_placeholders=False,
+                    prompt_options=prompt_options,
+                    context_manager=context_manager
+                )
+            except RateLimitError as e:
+                if log_callback:
+                    retry_msg = f" (retry after ~{e.retry_after}s)" if e.retry_after else ""
+                    log_callback("rate_limit_pause",
+                        f"⏸️ Rate limited by {e.provider or 'API'}{retry_msg}. "
+                        f"Auto-pausing refinement at chunk {i+1}/{total_chunks}...")
+                # Add remaining unrefined chunks as-is
+                for remaining in translated_chunks[i:]:
+                    refined_parts.append(remaining)
+                raise  # Re-raise to handlers.py
 
             # Record success in context manager
             if refined_text is not None and llm_response and context_manager:

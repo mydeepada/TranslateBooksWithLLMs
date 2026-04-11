@@ -231,6 +231,10 @@ async def _refine_subtitle_translations(
                     log_callback("srt_refinement_failed", f"Subtitle {idx + 1}: refinement failed, using original")
 
         except Exception as e:
+            # Re-raise RateLimitError to trigger auto-pause
+            from src.core.llm.exceptions import RateLimitError
+            if isinstance(e, RateLimitError):
+                raise
             # Fallback to original translation on error
             refined_translations[idx] = translated_text
             if log_callback:
@@ -472,6 +476,10 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                             break
                             
                 except Exception as e:
+                    # Re-raise RateLimitError to trigger auto-pause
+                    from src.core.llm.exceptions import RateLimitError
+                    if isinstance(e, RateLimitError):
+                        raise
                     if log_callback:
                         log_callback("srt_block_translation_error", f"Error: {str(e)}")
                     translated_block_text = None

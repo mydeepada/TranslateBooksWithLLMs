@@ -205,6 +205,9 @@ class ErrorRecoveryManager:
                 continue
 
             except Exception as e:
+                from src.core.llm.exceptions import RateLimitError
+                if isinstance(e, RateLimitError):
+                    raise
                 self._log("error", f"Error during split recovery: {e}")
                 return RecoveryResult(
                     success=False,
@@ -269,6 +272,9 @@ class ErrorRecoveryManager:
                 else:
                     break
             except Exception as e:
+                from src.core.llm.exceptions import RateLimitError
+                if isinstance(e, RateLimitError):
+                    raise
                 self._log("error", f"Error in strategy {i + 1}: {e}")
                 continue
 
@@ -331,6 +337,9 @@ class ErrorRecoveryManager:
                 )
 
         except Exception as e:
+            from src.core.llm.exceptions import RateLimitError
+            if isinstance(e, RateLimitError):
+                raise
             self._log("error", f"Error during placeholder recovery: {e}")
             return RecoveryResult(
                 success=False,
@@ -384,6 +393,9 @@ class ErrorRecoveryManager:
                         )
 
             except Exception as e:
+                from src.core.llm.exceptions import RateLimitError
+                if isinstance(e, RateLimitError):
+                    raise
                 self._log("error", f"Batch recovery failed: {e}")
                 still_failed.extend(batch)
 

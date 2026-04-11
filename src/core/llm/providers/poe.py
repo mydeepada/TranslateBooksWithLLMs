@@ -20,7 +20,7 @@ import json
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, RateLimitError
 
 
 class PoeProvider(LLMProvider):
@@ -373,12 +373,17 @@ class PoeProvider(LLMProvider):
                     return None
 
                 if response.status_code == 429:
-                    # Rate limited - use exponential backoff with jitter
-                    retry_after = response.headers.get("Retry-After")
-                    wait_time = int(retry_after) if retry_after else (2 ** attempt) + (asyncio.get_event_loop().time() % 1)
-                    print(f"⚠️ Poe rate limited, waiting {wait_time:.1f}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
+                    retry_after_header = response.headers.get("Retry-After")
+                    wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
+                    print(f"⚠️ Poe rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise RateLimitError(
+                        f"Poe rate limit exceeded after {MAX_TRANSLATION_ATTEMPTS} attempts",
+                        retry_after=wait_time,
+                        provider="poe"
+                    )
 
                 response.raise_for_status()
                 result = response.json()
