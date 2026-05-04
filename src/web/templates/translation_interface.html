@@ -387,13 +387,26 @@
                     </div>
 
                     <!-- Text Cleanup (OCR Correction) -->
-                    <div class="form-group" style="margin-bottom: 0;">
+                    <div class="form-group" style="margin-bottom: 15px;">
                         <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
                             <input type="checkbox" id="textCleanup">
                             <div>
                                 <span style="font-weight: 600; color: var(--text-dark);">Text Cleanup (OCR Correction)</span>
                                 <p style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
                                     For poorly formatted or OCR-scanned texts. Instructs the LLM to fix: broken line breaks, double spaces, punctuation errors, and merge incorrectly split paragraphs.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Disable Auto-Pause on Rate Limit -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="disableAutoPause">
+                            <div>
+                                <span style="font-weight: 600; color: var(--text-dark);">Don't auto-pause on rate limit (HTTP 429)</span>
+                                <p style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                                    By default, the translation pauses after the provider rate-limits and asks you to resume manually. Enable this to keep the translation running: it will wait for <code>Retry-After</code> seconds (or 60s default) and auto-resume from the last checkpoint. Useful for long novels on free-tier APIs. Click "Interrupt" anytime to cancel the auto-resume.
                                 </p>
                             </div>
                         </label>

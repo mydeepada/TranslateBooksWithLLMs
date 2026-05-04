@@ -688,6 +688,8 @@ export const FormManager = {
             },
             // Bilingual output (original + translation interleaved)
             bilingual_output: DomHelpers.getElement('bilingualMode')?.checked || false,
+            // Disable auto-pause on rate limit (auto-resume after Retry-After)
+            auto_pause_on_rate_limit: !(DomHelpers.getElement('disableAutoPause')?.checked || false),
             // TTS configuration
             tts_enabled: ttsEnabled,
             tts_voice: ttsEnabled ? (DomHelpers.getValue('ttsVoice') || '') : '',

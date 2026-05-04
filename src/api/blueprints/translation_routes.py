@@ -8,7 +8,8 @@ from flask import Blueprint, request, jsonify
 
 from src.config import (
     REQUEST_TIMEOUT,
-    OLLAMA_NUM_CTX
+    OLLAMA_NUM_CTX,
+    AUTO_PAUSE_ON_RATE_LIMIT
 )
 from src.tts.tts_config import TTSConfig
 
@@ -80,6 +81,8 @@ def create_translation_blueprint(state_manager, start_translation_job):
             'openrouter_api_key': _resolve_api_key(data.get('openrouter_api_key'), 'OPENROUTER_API_KEY'),
             # Prompt options (optional instructions to include in the system prompt)
             'prompt_options': data.get('prompt_options', {}),
+            # Auto-pause on rate limit toggle (request overrides .env default)
+            'auto_pause_on_rate_limit': data.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT),
             # Bilingual output (original + translation interleaved)
             'bilingual_output': data.get('bilingual_output', False),
             # TTS configuration
@@ -152,10 +155,20 @@ def create_translation_blueprint(state_manager, start_translation_job):
             return jsonify({"error": "Translation not found"}), 404
 
         job_data = state_manager.get_translation(translation_id)
-        if job_data.get('status') == 'running' or job_data.get('status') == 'queued':
+        status = job_data.get('status')
+        if status in ('running', 'queued'):
             state_manager.set_interrupted(translation_id, True)
             return jsonify({
                 "message": "Interruption signal sent. Translation will stop after the current segment."
+            }), 200
+
+        if status == 'rate_limited':
+            # Cancels any in-flight auto-resume sleep and stops the UI from treating
+            # the job as still-active.
+            state_manager.set_interrupted(translation_id, True)
+            state_manager.set_translation_field(translation_id, 'status', 'interrupted')
+            return jsonify({
+                "message": "Auto-resume cancelled. Translation marked interrupted; you can resume manually later."
             }), 200
 
         return jsonify({

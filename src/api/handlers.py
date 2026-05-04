@@ -14,6 +14,7 @@ from src.utils.unified_logger import setup_web_logger, LogType
 from src.utils.file_utils import get_unique_output_path, generate_tts_for_translation
 from src.core.llm import OpenRouterProvider
 from src.core.llm.exceptions import RateLimitError
+from src.config import AUTO_PAUSE_ON_RATE_LIMIT, RATE_LIMIT_AUTO_RESUME_DELAY
 from src.core.adapters import translate_file
 from src.tts.tts_config import TTSConfig
 from .websocket import emit_update
@@ -440,44 +441,82 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             }, namespace='/')
 
     except RateLimitError as e:
-        # Auto-pause on rate limit — save checkpoint so user can resume later
+        auto_pause = config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT)
         retry_msg = f" Retry suggested after ~{e.retry_after}s." if e.retry_after else ""
         provider_name = e.provider or config.get('llm_provider', 'API')
-        pause_msg = f"⏸️ Rate limited by {provider_name}.{retry_msg} Translation auto-paused — you can resume when ready."
 
-        _log_message_callback("rate_limit_auto_pause", pause_msg)
+        if not state_manager.exists(translation_id):
+            return
 
-        if state_manager.exists(translation_id):
+        # Auto-resume mode keeps the job running: wait, then re-enter from the checkpoint.
+        if not auto_pause:
+            wait_seconds = e.retry_after or RATE_LIMIT_AUTO_RESUME_DELAY
+            wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
+                        f"Auto-resume in {wait_seconds}s (auto-pause disabled).")
+            _log_message_callback("rate_limit_auto_resume", wait_msg)
+
+            # Surface 'rate_limited' transiently so the UI shows what's happening.
             state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
-            state_manager.set_translation_field(translation_id, 'interrupted', True)
-
-            # Mark checkpoint as interrupted so it appears in resumable jobs
-            checkpoint_manager.mark_interrupted(translation_id)
-
-            stats = state_manager.get_translation_field(translation_id, 'stats') or {}
-            elapsed_time = time.time() - stats.get('start_time', time.time())
-            _update_translation_stats_callback({'elapsed_time': elapsed_time})
-
-            # Emit rate_limited status + checkpoint_created for UI
             emit_update(socketio, translation_id, {
                 'status': 'rate_limited',
-                'log': pause_msg,
-                'result': state_manager.get_translation_field(translation_id, 'result') or f"Translation paused (rate limited)"
+                'log': wait_msg
             }, state_manager)
 
-            socketio.emit('checkpoint_created', {
-                'translation_id': translation_id,
-                'status': 'rate_limited',
-                'message': pause_msg
-            }, namespace='/')
+            await asyncio.sleep(wait_seconds)
 
-            # Trigger file list refresh for partial output
-            output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
-            if output_filepath and os.path.exists(output_filepath):
-                socketio.emit('file_list_changed', {
-                    'reason': 'rate_limited',
-                    'filename': config.get('output_filename', 'unknown')
-                }, namespace='/')
+            # Honor an interrupt that arrived during the wait by falling through to pause.
+            if state_manager.get_translation_field(translation_id, 'interrupted'):
+                _log_message_callback("rate_limit_auto_resume_cancelled",
+                    "🛑 Auto-resume cancelled by user, pausing instead.")
+            else:
+                cp_data = checkpoint_manager.load_checkpoint(translation_id)
+                if cp_data:
+                    new_config = dict(config)
+                    new_config['is_resume'] = True
+                    new_config['resume_from_index'] = cp_data['resume_from_index']
+                    checkpoint_manager.mark_running(translation_id)
+                    state_manager.set_translation_field(translation_id, 'status', 'running')
+                    emit_update(socketio, translation_id, {
+                        'status': 'running',
+                        'log': f"▶️ Auto-resuming from chunk {cp_data['resume_from_index']}..."
+                    }, state_manager)
+                    await perform_actual_translation(
+                        translation_id, new_config, state_manager, output_dir, socketio
+                    )
+                    return
+                # No checkpoint available, fall through to the pause path below.
+                _log_message_callback("rate_limit_no_checkpoint",
+                    "⚠️ Auto-resume requested but no checkpoint found, falling back to pause.")
+
+        pause_msg = f"⏸️ Rate limited by {provider_name}.{retry_msg} Translation auto-paused, you can resume when ready."
+        _log_message_callback("rate_limit_auto_pause", pause_msg)
+
+        state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
+        state_manager.set_translation_field(translation_id, 'interrupted', True)
+        checkpoint_manager.mark_interrupted(translation_id)
+
+        stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+        elapsed_time = time.time() - stats.get('start_time', time.time())
+        _update_translation_stats_callback({'elapsed_time': elapsed_time})
+
+        emit_update(socketio, translation_id, {
+            'status': 'rate_limited',
+            'log': pause_msg,
+            'result': state_manager.get_translation_field(translation_id, 'result') or f"Translation paused (rate limited)"
+        }, state_manager)
+
+        socketio.emit('checkpoint_created', {
+            'translation_id': translation_id,
+            'status': 'rate_limited',
+            'message': pause_msg
+        }, namespace='/')
+
+        output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
+        if output_filepath and os.path.exists(output_filepath):
+            socketio.emit('file_list_changed', {
+                'reason': 'rate_limited',
+                'filename': config.get('output_filename', 'unknown')
+            }, namespace='/')
 
     except Exception as e:
         critical_error_msg = f"Critical error during translation task ({translation_id}): {str(e)}"

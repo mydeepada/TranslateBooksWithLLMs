@@ -87,6 +87,7 @@ function getTranslationConfig(file) {
         file_type: file.fileType,
         prompt_options: promptOptions,
         bilingual_output: DomHelpers.getElement('bilingualMode')?.checked || false,
+        auto_pause_on_rate_limit: !(DomHelpers.getElement('disableAutoPause')?.checked || false),
         tts_enabled: ttsEnabled,
         tts_voice: ttsEnabled ? (DomHelpers.getValue('ttsVoice') || '') : '',
         tts_rate: ttsEnabled ? (DomHelpers.getValue('ttsRate') || '+0%') : '+0%',

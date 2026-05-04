@@ -191,7 +191,8 @@ export const TranslationTracker = {
 
                     if (serverState.status === 'completed' ||
                         serverState.status === 'error' ||
-                        serverState.status === 'interrupted') {
+                        serverState.status === 'interrupted' ||
+                        serverState.status === 'rate_limited') {
 
                         MessageLogger.addLog(`🔄 Syncing state: translation ${serverState.status} on server`);
                         this.resetUIToIdle();
@@ -392,7 +393,7 @@ export const TranslationTracker = {
 
         if (!currentJob || data.translation_id !== currentJob.translationId) {
             if (data.translation_id && !currentJob) {
-                if (data.status === 'completed' || data.status === 'error' || data.status === 'interrupted') {
+                if (data.status === 'completed' || data.status === 'error' || data.status === 'interrupted' || data.status === 'rate_limited') {
                     this.resetUIToIdle();
                 }
             }
@@ -428,6 +429,14 @@ export const TranslationTracker = {
             MessageLogger.resetProgressTracking();
             this.finishCurrentFileTranslation(
                 `ℹ️ ${currentFile.name}: Translation interrupted.`,
+                'info',
+                data
+            );
+            this.updateActiveTranslationsState();
+        } else if (data.status === 'rate_limited') {
+            MessageLogger.resetProgressTracking();
+            this.finishCurrentFileTranslation(
+                `⏸️ ${currentFile.name}: Rate limited, translation auto-paused. Use the Resume button below when ready.`,
                 'info',
                 data
             );
@@ -699,7 +708,8 @@ export const TranslationTracker = {
         this.updateFileStatusInList(
             currentFile.name,
             resultData.status === 'completed' ? 'Completed' :
-            (resultData.status === 'interrupted' ? 'Interrupted' : 'Error')
+            resultData.status === 'interrupted' ? 'Interrupted' :
+            resultData.status === 'rate_limited' ? 'Rate Limited' : 'Error'
         );
 
         StateManager.setState('translation.currentJob', null);
@@ -708,6 +718,9 @@ export const TranslationTracker = {
             this.processNextFileInQueue();
         } else if (resultData.status === 'interrupted') {
             MessageLogger.addLog('🛑 Batch processing stopped by user.');
+            this.resetUIToIdle();
+        } else if (resultData.status === 'rate_limited') {
+            MessageLogger.addLog('⏸️ Batch processing paused (rate limited). Resume from the section below.');
             this.resetUIToIdle();
         } else {
             this.processNextFileInQueue();

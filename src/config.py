@@ -135,6 +135,13 @@ CONTROLLABLE_THINKING_MODELS = [
 THINKING_MODELS = UNCONTROLLABLE_THINKING_MODELS + CONTROLLABLE_THINKING_MODELS
 MAX_TRANSLATION_ATTEMPTS = int(os.getenv('MAX_TRANSLATION_ATTEMPTS', '2'))
 
+# Auto-pause on HTTP 429 rate limit
+# When True (default): translation pauses after retries are exhausted; user resumes manually.
+# When False: translation auto-resumes from the last checkpoint after waiting `retry_after`
+# seconds (or RATE_LIMIT_AUTO_RESUME_DELAY if no Retry-After header).
+AUTO_PAUSE_ON_RATE_LIMIT = os.getenv('AUTO_PAUSE_ON_RATE_LIMIT', 'true').lower() == 'true'
+RATE_LIMIT_AUTO_RESUME_DELAY = int(os.getenv('RATE_LIMIT_AUTO_RESUME_DELAY', '60'))
+
 # Adaptive context optimization settings
 # The new strategy starts at a small context and grows as needed based on actual token usage
 AUTO_ADJUST_CONTEXT = os.getenv("AUTO_ADJUST_CONTEXT", "true").lower() == "true"

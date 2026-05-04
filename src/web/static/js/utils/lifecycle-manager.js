@@ -221,7 +221,7 @@ export const LifecycleManager = {
             const data = await ApiClient.getTranslationStatus(tidToCheck);
             const serverStatus = data.status;
 
-            if (serverStatus === 'completed' || serverStatus === 'error' || serverStatus === 'interrupted') {
+            if (serverStatus === 'completed' || serverStatus === 'error' || serverStatus === 'interrupted' || serverStatus === 'rate_limited') {
                 MessageLogger.addLog(`🔄 Detected state desync: job ${serverStatus} on server but UI still active. Syncing...`);
 
                 window.dispatchEvent(new CustomEvent('translationUpdate', {
