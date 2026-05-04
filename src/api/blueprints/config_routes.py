@@ -586,7 +586,10 @@ def create_config_blueprint(server_session_id=None):
 
                     if models:
                         model_ids = [m['id'] for m in models]
-                        default_model = model_ids[0] if model_ids else 'gpt-4o'
+                        if DEFAULT_MODEL and DEFAULT_MODEL in model_ids:
+                            default_model = DEFAULT_MODEL
+                        else:
+                            default_model = model_ids[0] if model_ids else 'gpt-4o'
 
                         return jsonify({
                             "models": models,
@@ -604,10 +607,14 @@ def create_config_blueprint(server_session_id=None):
 
         # Fallback: return static OpenAI models
         model_ids = [m['id'] for m in openai_static_models]
+        if DEFAULT_MODEL and DEFAULT_MODEL in model_ids:
+            fallback_default = DEFAULT_MODEL
+        else:
+            fallback_default = "gpt-4o"
         return jsonify({
             "models": openai_static_models,
             "model_names": model_ids,
-            "default": "gpt-4o",
+            "default": fallback_default,
             "status": "openai_static",
             "count": len(openai_static_models)
         })
