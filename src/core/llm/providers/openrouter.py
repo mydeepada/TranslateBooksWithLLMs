@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, Callable
 import httpx
 import asyncio
 import json
+import time
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
@@ -155,33 +156,29 @@ class OpenRouterProvider(LLMProvider):
                 architecture = model.get("architecture", {})
                 modality = architecture.get("modality", "")
 
-                # Skip free models (they don't work reliably)
-                if ":free" in model_id:
-                    continue
-
-                # Filter logic for text-only models
                 if text_only:
-                    # Skip multimodal/vision models
                     if modality == "multimodal":
                         continue
-                    # Skip models with vision keywords
                     model_id_lower = model_id.lower()
                     vision_keywords = ["vision", "vl", "-v-", "image"]
                     if any(kw in model_id_lower for kw in vision_keywords):
                         continue
 
-                # Get pricing info
                 pricing = model.get("pricing", {})
                 prompt_price = float(pricing.get("prompt", "0") or "0")
                 completion_price = float(pricing.get("completion", "0") or "0")
 
-                # Calculate cost per 1M tokens for display
                 prompt_per_million = prompt_price * 1_000_000
                 completion_per_million = completion_price * 1_000_000
 
+                is_free = ":free" in model_id
+                display_name = model.get("name", model_id)
+                if is_free and "(free" not in display_name.lower():
+                    display_name = f"{display_name} (free, 20 req/min)"
+
                 filtered_models.append({
                     "id": model_id,
-                    "name": model.get("name", model_id),
+                    "name": display_name,
                     "context_length": model.get("context_length", 0),
                     "pricing": {
                         "prompt": prompt_price,
@@ -189,11 +186,12 @@ class OpenRouterProvider(LLMProvider):
                         "prompt_per_million": prompt_per_million,
                         "completion_per_million": completion_per_million,
                     },
-                    "total_price": prompt_price + completion_price,  # For sorting
+                    "total_price": prompt_price + completion_price,
+                    "is_free": is_free,
                 })
 
-            # Sort by total price (cheapest first)
-            filtered_models.sort(key=lambda x: x["total_price"])
+            # Sort: paid models by price ascending, free models last (shared 20 req/min limit)
+            filtered_models.sort(key=lambda x: (x["is_free"], x["total_price"]))
 
             if len(filtered_models) < 5:
                 return self._get_fallback_models()
@@ -201,13 +199,39 @@ class OpenRouterProvider(LLMProvider):
             return filtered_models
 
         except Exception as e:
-            print(f"⚠️ Failed to fetch OpenRouter models: {e}")
+            print(f"[OpenRouter] WARN: Failed to fetch models: {e}")
             return self._get_fallback_models()
 
     def _get_fallback_models(self) -> list:
         """Return fallback models list when API fetch fails."""
         return [{"id": m, "name": m, "pricing": {"prompt": 0, "completion": 0}}
                 for m in self.FALLBACK_MODELS]
+
+    @staticmethod
+    def _compute_429_wait(headers, attempt: int) -> int:
+        """
+        Compute wait time on 429.
+
+        OpenRouter free models return X-RateLimit-Reset as a UTC timestamp in
+        milliseconds; Retry-After is usually absent. Fallback to exponential
+        backoff for upstream-provider 429s that have neither header.
+        """
+        retry_after = headers.get("Retry-After") or headers.get("retry-after")
+        if retry_after:
+            try:
+                return max(int(retry_after), 1)
+            except (ValueError, TypeError):
+                pass
+
+        reset_ms = headers.get("X-RateLimit-Reset") or headers.get("x-ratelimit-reset")
+        if reset_ms:
+            try:
+                wait = int((int(reset_ms) - time.time() * 1000) / 1000) + 1
+                return max(min(wait, 65), 1)
+            except (ValueError, TypeError):
+                pass
+
+        return min(2 ** (attempt + 2), 60)
 
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT,
                       system_prompt: Optional[str] = None) -> Optional[LLMResponse]:
@@ -232,18 +256,16 @@ class OpenRouterProvider(LLMProvider):
             "X-Title": "TranslateBookWithLLM",
         }
 
-        # Build messages array
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
+        # thinking/enable_thinking forwarded to underlying models (DeepSeek, Qwen, etc.)
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            # Disable thinking/reasoning mode for models like DeepSeek, Qwen via OpenRouter
-            # OpenRouter passes these parameters to the underlying model
             "thinking": False,
             "enable_thinking": False,
         }
@@ -262,33 +284,28 @@ class OpenRouterProvider(LLMProvider):
                 result = response.json()
 
                 if "choices" not in result or len(result["choices"]) == 0:
-                    print(f"⚠️ OpenRouter: Unexpected response format: {result}")
+                    print(f"[OpenRouter] WARN: Unexpected response format: {result}")
                     return None
 
                 response_text = result["choices"][0].get("message", {}).get("content", "")
 
-                # Track cost from usage data
                 usage = result.get("usage", {})
                 prompt_tokens = usage.get("prompt_tokens", 0)
                 completion_tokens = usage.get("completion_tokens", 0)
 
-                # OpenRouter returns cost in the response (in USD)
                 if "cost" in result:
                     cost = float(result.get("cost", 0))
                 else:
-                    # Fallback estimate (using typical rates)
+                    # Fallback estimate when OpenRouter omits cost (typical rates in USD)
                     cost = (prompt_tokens * 0.50 / 1_000_000) + (completion_tokens * 1.50 / 1_000_000)
 
-                # Update session tracking
                 OpenRouterProvider._session_cost += cost
                 OpenRouterProvider._session_tokens["prompt"] += prompt_tokens
                 OpenRouterProvider._session_tokens["completion"] += completion_tokens
 
-                # Log cost info
-                print(f"💰 OpenRouter: {prompt_tokens}+{completion_tokens} tokens | "
+                print(f"[OpenRouter] {prompt_tokens}+{completion_tokens} tokens | "
                       f"Cost: ${cost:.6f} (session: ${OpenRouterProvider._session_cost:.4f})")
 
-                # Call cost callback if set
                 if OpenRouterProvider._cost_callback:
                     try:
                         OpenRouterProvider._cost_callback({
@@ -300,7 +317,7 @@ class OpenRouterProvider(LLMProvider):
                             "total_completion_tokens": OpenRouterProvider._session_tokens["completion"],
                         })
                     except Exception as cb_err:
-                        print(f"⚠️ Cost callback error: {cb_err}")
+                        print(f"[OpenRouter] WARN: Cost callback error: {cb_err}")
 
                 return LLMResponse(
                     content=response_text,
@@ -324,11 +341,9 @@ class OpenRouterProvider(LLMProvider):
                     error_body = e.response.text[:500]
                     error_message = f"{e} - {error_body}"
 
-                # Handle rate limiting (429)
                 if e.response.status_code == 429:
-                    retry_after_header = e.response.headers.get("Retry-After")
-                    wait_time = int(retry_after_header) if retry_after_header else min(2 ** (attempt + 2), 60)
-                    print(f"⚠️ OpenRouter rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
+                    wait_time = self._compute_429_wait(e.response.headers, attempt)
+                    print(f"[OpenRouter] rate limited (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}), waiting {wait_time}s...")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(wait_time)
                         continue
@@ -338,20 +353,18 @@ class OpenRouterProvider(LLMProvider):
                         provider="openrouter"
                     )
 
-                # Parse OpenRouter specific error messages
                 if e.response.status_code == 404:
-                    print(f"❌ OpenRouter: Model '{self.model}' not found!")
+                    print(f"[OpenRouter] ERROR: Model '{self.model}' not found!")
                     print(f"   Check available models at https://openrouter.ai/models")
                     print(f"   Response: {error_body}")
                 elif e.response.status_code == 401:
-                    print(f"❌ OpenRouter: Invalid API key!")
+                    print(f"[OpenRouter] ERROR: Invalid API key!")
                 elif e.response.status_code == 402:
-                    print(f"❌ OpenRouter: Insufficient credits!")
+                    print(f"[OpenRouter] ERROR: Insufficient credits!")
                 else:
                     print(f"OpenRouter API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     print(f"Response details: Status {e.response.status_code}, Body: {error_body}...")
 
-                # Detect context overflow errors
                 context_overflow_keywords = ["context_length", "maximum context", "token limit",
                                               "too many tokens", "reduce the length", "max_tokens",
                                               "context window", "exceeds"]
