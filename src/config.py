@@ -207,6 +207,9 @@ MISTRAL_API_ENDPOINT = os.getenv('MISTRAL_API_ENDPOINT', 'https://api.mistral.ai
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 DEEPSEEK_MODEL = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
 DEEPSEEK_API_ENDPOINT = os.getenv('DEEPSEEK_API_ENDPOINT', 'https://api.deepseek.com/chat/completions')
+# DeepSeek V4 models (deepseek-v4-flash, deepseek-v4-pro) enable thinking by default,
+# wasting ~10-25x tokens on translation. Set to 'false' to keep thinking enabled.
+DEEPSEEK_DISABLE_THINKING = os.getenv('DEEPSEEK_DISABLE_THINKING', 'true').lower() == 'true'
 
 # Poe configuration (access to Claude, GPT, Gemini, Llama, Grok via single API)
 POE_API_KEY = os.getenv('POE_API_KEY', '')

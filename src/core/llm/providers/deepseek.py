@@ -5,10 +5,11 @@ This module provides the DeepSeekProvider class for interacting with
 DeepSeek's API, which offers cost-effective models with strong capabilities.
 
 Features:
-    - DeepSeek V3 models (chat)
+    - DeepSeek V3 (chat) and V4 (flash/pro) models
     - OpenAI-compatible API format
     - Cost-effective pricing (~5-10x cheaper than OpenAI)
     - 64K context window
+    - Auto-disables V4 reasoning by default (translation-friendly)
 """
 
 from typing import Optional
@@ -48,19 +49,24 @@ class DeepSeekProvider(LLMProvider):
         "deepseek-chat": 64000,
         "deepseek-reasoner": 64000,
         "deepseek-coder": 16000,
+        "deepseek-v4": 64000,
     }
 
     FALLBACK_MODELS = [
         "deepseek-chat",
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
     ]
 
     THINKING_MODELS = ["deepseek-reasoner", "deepseek-r1"]
+    THINKING_BY_DEFAULT_MODELS = ["deepseek-v4"]
 
     def __init__(
         self,
         api_key: str,
         model: str = "deepseek-chat",
-        api_endpoint: Optional[str] = None
+        api_endpoint: Optional[str] = None,
+        disable_thinking: bool = True
     ):
         """
         Initialize the DeepSeek provider.
@@ -69,10 +75,13 @@ class DeepSeekProvider(LLMProvider):
             api_key: DeepSeek API key
             model: Model identifier (default: deepseek-chat)
             api_endpoint: Optional custom API endpoint
+            disable_thinking: For models that think by default (V4 family),
+                inject ``thinking={"type":"disabled"}`` to skip reasoning tokens.
         """
         super().__init__(model)
         self.api_key = api_key
         self.api_endpoint = api_endpoint or self.API_URL
+        self.disable_thinking = disable_thinking
 
     def _get_context_limit(self) -> int:
         """
@@ -90,6 +99,11 @@ class DeepSeekProvider(LLMProvider):
     def _is_thinking_model(self) -> bool:
         """Check if the current model uses thinking mode."""
         return any(tm in self.model.lower() for tm in self.THINKING_MODELS)
+
+    def _thinking_enabled_by_default(self) -> bool:
+        """True for models (V4 family) that think unless `thinking.type=disabled` is sent."""
+        model_lower = self.model.lower()
+        return any(tm in model_lower for tm in self.THINKING_BY_DEFAULT_MODELS)
 
     async def get_available_models(self) -> list:
         """
@@ -120,7 +134,8 @@ class DeepSeekProvider(LLMProvider):
 
             for model in models_data:
                 model_id = model.get("id", "")
-                # Skip thinking/reasoner models (inefficient for translation)
+                # Skip deepseek-reasoner: always thinks, no toggle. V4 models
+                # are kept (they think by default but we override that).
                 if "reasoner" in model_id.lower():
                     continue
                 if "deepseek" in model_id.lower():
@@ -206,6 +221,9 @@ class DeepSeekProvider(LLMProvider):
             "temperature": 0.3,
             "stream": False
         }
+
+        if self._thinking_enabled_by_default() and self.disable_thinking:
+            payload["thinking"] = {"type": "disabled"}
 
         client = await self._get_client()
         for attempt in range(MAX_TRANSLATION_ATTEMPTS):
