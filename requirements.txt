@@ -38,4 +38,8 @@ pytest-cov>=4.1.0
 
 # Personal additions
 # deepl-python for comparing DeepL output against LLM translations
+# Note: package name on PyPI is 'deepl', not 'deepL' (case-sensitive on some systems)
 deepL>=1.17.0
+
+# langdetect for auto-detecting source language when not specified by the user
+langdetect>=1.0.9
