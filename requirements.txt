@@ -35,3 +35,7 @@ tiktoken>=0.5.0
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
 pytest-cov>=4.1.0
+
+# Personal additions
+# deepl-python for comparing DeepL output against LLM translations
+deepL>=1.17.0
