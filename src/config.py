@@ -39,7 +39,7 @@ class TranslationConfig:
     overlap: int = 0        # overlap between chunks to preserve context
     preserve_formatting: bool = True
     glossary_path: Optional[str] = None
-    context_window: int = 2  # number of previous chunks to include as context
+    context_window: int = 3  # number of previous chunks to include as context (bumped from 2 for better coherence)
 
 
 @dataclass
@@ -81,7 +81,7 @@ def load_config() -> AppConfig:
         overlap=int(os.getenv("CHUNK_OVERLAP", "0")),
         preserve_formatting=os.getenv("PRESERVE_FORMATTING", "true").lower() == "true",
         glossary_path=os.getenv("GLOSSARY_PATH"),
-        context_window=int(os.getenv("CONTEXT_WINDOW", "2")),
+        context_window=int(os.getenv("CONTEXT_WINDOW", "3")),
     )
 
     app_cfg = AppConfig(
@@ -89,25 +89,4 @@ def load_config() -> AppConfig:
         translation=translation_cfg,
         output_dir=os.getenv("OUTPUT_DIR", "output"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
-        cache_enabled=os.getenv("CACHE_ENABLED", "true").lower() == "true",
-        cache_dir=os.getenv("CACHE_DIR", ".cache"),
-    )
-
-    # Ensure output and cache directories exist
-    Path(app_cfg.output_dir).mkdir(parents=True, exist_ok=True)
-    if app_cfg.cache_enabled:
-        Path(app_cfg.cache_dir).mkdir(parents=True, exist_ok=True)
-
-    return app_cfg
-
-
-# Singleton config instance
-_config: Optional[AppConfig] = None
-
-
-def get_config() -> AppConfig:
-    """Return the singleton application configuration, loading it if necessary."""
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
+        cache_enabled=os.getenv("CACHE_ENABLED", "true").lower() == "true"
