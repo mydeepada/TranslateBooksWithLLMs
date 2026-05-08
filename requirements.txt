@@ -47,4 +47,8 @@ langdetect>=1.0.9
 
 # lingua-language-detector: more accurate alternative to langdetect for short/ambiguous text
 # useful when translating books with mixed-language passages or unusual formatting
-lingua-language-detector>=2.0.0
+libua-language-detector>=2.0.0
+
+# sacrebleu for computing BLEU scores when evaluating translation quality
+# handy for quick benchmarking of different models/prompts on the same source text
+sacrebleu>=2.3.0
