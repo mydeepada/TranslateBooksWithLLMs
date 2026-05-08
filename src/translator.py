@@ -68,7 +68,8 @@ class Translator:
             if idx < len(chunks):
                 time.sleep(self.config.translation.request_delay)
 
-        result = "\n".join(self._translated_chunks)
+        # Use double newline between chunks so paragraph breaks are preserved
+        result = "\n\n".join(self._translated_chunks)
         self._write_file(Path(output_path), result)
         logger.info("Translation complete. Output written to: %s", output_path)
         return output_path
@@ -81,60 +82,4 @@ class Translator:
         """Attempt to translate *chunk*, retrying on transient errors."""
         max_retries = self.config.translation.max_retries
         for attempt in range(1, max_retries + 1):
-            try:
-                return self.client.translate(chunk)
-            except Exception as exc:  # noqa: BLE001
-                if attempt == max_retries:
-                    logger.error(
-                        "All %d retry attempts exhausted. Last error: %s",
-                        max_retries,
-                        exc,
-                    )
-                    raise
-                wait = 2 ** attempt  # exponential back-off
-                logger.warning(
-                    "Attempt %d failed (%s). Retrying in %ds …",
-                    attempt,
-                    exc,
-                    wait,
-                )
-                time.sleep(wait)
-        # Should never reach here
-        raise RuntimeError("Translation failed unexpectedly.")
-
-    @staticmethod
-    def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
-        """Split *text* into chunks of at most *chunk_size* characters,
-        preferring paragraph boundaries where possible."""
-        if chunk_size <= 0:
-            return [text]
-
-        paragraphs = text.split("\n\n")
-        chunks: list[str] = []
-        current: list[str] = []
-        current_len = 0
-
-        for para in paragraphs:
-            para_len = len(para) + 2  # account for the '\n\n' separator
-            if current_len + para_len > chunk_size and current:
-                chunks.append("\n\n".join(current))
-                current = []
-                current_len = 0
-            current.append(para)
-            current_len += para_len
-
-        if current:
-            chunks.append("\n\n".join(current))
-
-        return chunks
-
-    @staticmethod
-    def _read_file(path: Path) -> str:
-        """Read a plain-text or Markdown file."""
-        return path.read_text(encoding="utf-8")
-
-    @staticmethod
-    def _write_file(path: Path, content: str) -> None:
-        """Write *content* to *path*, creating parent directories as needed."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+            
