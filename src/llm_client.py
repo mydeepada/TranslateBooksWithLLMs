@@ -90,8 +90,7 @@ class LLMClient:
             # Added: explicitly ask the model not to translate proper nouns like character
             # names, place names, and titles — avoids awkward auto-translations.
             f"Do not translate proper nouns such as character names, place names, or titles. "
-            f"Output only the translated text without any additional commentary."
+            # Also ask it to keep paragraph breaks intact — I found the model sometimes
+            # collapses them, which messes up the epub structure downstream.
+            f"Preserve all paragraph breaks and blank lines exactly as they appear in the original."
         )
-
-    def _call_anthropic(self, system_prompt: str, user_message: str) -> str:
-        """Call 
