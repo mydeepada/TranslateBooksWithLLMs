@@ -87,34 +87,11 @@ class LLMClient:
             f"You are a professional literary translator. "
             f"Translate the provided text from {source_language} to {target_language}. "
             f"Preserve the original tone, style, and formatting. "
+            # Added: explicitly ask the model not to translate proper nouns like character
+            # names, place names, and titles — avoids awkward auto-translations.
+            f"Do not translate proper nouns such as character names, place names, or titles. "
             f"Output only the translated text without any additional commentary."
         )
 
     def _call_anthropic(self, system_prompt: str, user_message: str) -> str:
-        """Call the Anthropic API."""
-        response = self._client.messages.create(
-            model=self.config.model,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return response.content[0].text
-
-    def _call_openai_compatible(self, system_prompt: str, user_message: str) -> str:
-        """Call an OpenAI-compatible API (OpenAI, Ollama, etc.)."""
-        response = self._client.chat.completions.create(
-            model=self.config.model,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-        )
-        return response.choices[0].message.content
-
-
-def create_llm_client(config: LLMConfig) -> LLMClient:
-    """Factory function to create an LLM client from config."""
-    return LLMClient(config)
+        """Call 
