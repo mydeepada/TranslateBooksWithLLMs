@@ -90,7 +90,8 @@ class LLMClient:
             # Added: explicitly ask the model not to translate proper nouns like character
             # names, place names, and titles — avoids awkward auto-translations.
             f"Do not translate proper nouns such as character names, place names, or titles. "
-            # Also ask it to keep paragraph breaks intact — I found the model sometimes
-            # collapses them, which messes up the epub structure downstream.
-            f"Preserve all paragraph breaks and blank lines exactly as they appear in the original."
+            # Personal note: also asking it to keep paragraph breaks intact — the default
+            # behavior was collapsing them which made epub output look wrong.
+            f"Preserve all paragraph breaks and blank lines exactly as they appear in the original text. "
+            f"Output only the translated text, with no commentary or explanation."
         )
