@@ -46,8 +46,12 @@ class Translator:
 
         if output_path is None:
             target_lang = self.config.translation.target_language.lower()
+            # Put translated files in a dedicated 'translated/' subdirectory
+            # to keep the source folder tidy.
+            output_dir = source.parent / "translated"
+            output_dir.mkdir(exist_ok=True)
             output_path = str(
-                source.parent / f"{source.stem}_{target_lang}{source.suffix}"
+                output_dir / f"{source.stem}_{target_lang}{source.suffix}"
             )
 
         logger.info("Reading source file: %s", input_path)
@@ -80,6 +84,4 @@ class Translator:
 
     def _translate_chunk_with_retry(self, chunk: str) -> str:
         """Attempt to translate *chunk*, retrying on transient errors."""
-        max_retries = self.config.translation.max_retries
-        for attempt in range(1, max_retries + 1):
-            
+        max_retries = self.config.transl
