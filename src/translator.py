@@ -63,13 +63,17 @@ class Translator:
         logger.info("Split into %d chunk(s) for translation.", len(chunks))
 
         self._translated_chunks = []
+        total = len(chunks)
         for idx, chunk in enumerate(chunks, start=1):
-            logger.info("Translating chunk %d / %d …", idx, len(chunks))
+            # Print progress to stdout as well so I can monitor long books
+            # without tailing the log file.
+            print(f"[{idx}/{total}] Translating chunk {idx} …")
+            logger.info("Translating chunk %d / %d …", idx, total)
             translated = self._translate_chunk_with_retry(chunk)
             self._translated_chunks.append(translated)
 
             # Respect rate limits between requests
-            if idx < len(chunks):
+            if idx < total:
                 time.sleep(self.config.translation.request_delay)
 
         # Use double newline between chunks so paragraph breaks are preserved
@@ -80,8 +84,4 @@ class Translator:
 
     # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _translate_chunk_with_retry(self, chunk: str) -> str:
-        """Attempt to translate *chunk*, retrying on transient errors."""
-        max_retries = self.config.transl
+    # --------------------------
